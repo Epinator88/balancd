@@ -1,0 +1,13 @@
+{
+    "id": "balancd",
+    "name": "Balanc'd",
+    "author": ["Epinator88"],
+    "description": "Adds a bunch of jokers and a few editions. Thank you for downloading!",
+    "prefix": "ep1n",
+    "main_file": "balancd.lua",
+    "badge_colour": "c7638f",
+    "dependencies": [
+        "Steamodded (>=1.0.0~ALPHA-1225a)"
+    ],
+    "version": "1.0.0"
+}

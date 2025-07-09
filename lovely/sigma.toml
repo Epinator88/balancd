@@ -1,0 +1,358 @@
+[manifest]
+version = "1.0.0"
+dump_lua = true
+priority = 0
+
+# Removes strange behaviour that causes the Play Hand button to be invalid if you've got more than 5 cards selected
+[[patches]]
+[patches.pattern]
+target = "functions/button_callbacks.lua"
+pattern = "if #G.hand.highlighted <= 0 or G.GAME.blind.block_play or #G.hand.highlighted > 5 then"
+position = "at"
+payload = "if #G.hand.highlighted <= 0 or G.GAME.blind.block_play then"
+match_indent = true
+
+# _6 now gets all 6 of a kinds
+[[patches]]
+[patches.pattern]
+target = "functions/misc_functions.lua"
+pattern = "_2 = get_X_same(2,hand),"
+position = "after"
+payload = "_6 = get_X_same(6,hand),"
+match_indent = true
+
+# _7 now gets all 7 of a kinds
+[[patches]]
+[patches.pattern]
+target = "functions/misc_functions.lua"
+pattern = "_3 = get_X_same(3,hand),"
+position = "after"
+payload = "_7 = get_X_same(7,hand),"
+match_indent = true
+
+# [OUTDATED] Add the Full Hand Retrigger tooltip
+[[patches]]
+[patches.pattern]
+target = "localization/en-us.lua"
+pattern = '''
+purple_seal={
+	name="Purple Seal",
+	text={
+		"Creates a {C:tarot}Tarot{} card",
+		"when {C:attention}discarded",
+		"{C:inactive}(Must have room)",
+	},
+},
+'''
+position = "after"
+payload = '''
+fhr={
+	name = "Full Hand Retrigger",
+	text = {
+		"Retriggers all played",
+		"and held in hand cards",
+		"when triggered"
+	},
+},
+'''
+match_indent = true
+
+# If Boss was skipped, run ep1n_gen_boss_tag
+[[patches]]
+[patches.pattern]
+target = "functions/UI_definitions.lua"
+pattern = '''
+if type == 'Small' then
+  extras = create_UIBox_blind_tag(type, run_info)
+'''
+position = "after"
+payload = '''
+elseif type == 'Boss' then
+  extras = ep1n_gen_boss_tag(type, run_info)
+'''
+match_indent = true
+
+# Checks if the Boss Blind was skipped and reacts accordingly
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = '''
+if G.GAME.round_resets.blind_states.Boss == 'Defeated' then
+'''
+position = "at"
+payload = '''
+if G.GAME.round_resets.blind_states.Boss == 'Defeated' or G.GAME.round_resets.blind_states.Boss == 'Skipped' then
+	G.GAME.round_resets.blind_tags.Boss = nil
+'''
+match_indent = true
+
+# Resets all blinds if Boss Blind is skipped
+[[patches]]
+[patches.pattern]
+target = "functions/button_callbacks.lua"
+pattern = '''
+local skipped, skip_to = G.GAME.blind_on_deck or 'Small', 
+	G.GAME.blind_on_deck == 'Small' and 'Big' or G.GAME.blind_on_deck == 'Big' and 'Boss' or 'Boss'
+	G.GAME.round_resets.blind_states[skipped] = 'Skipped'
+	G.GAME.round_resets.blind_states[skip_to] = 'Select'
+	G.GAME.blind_on_deck = skip_to
+'''
+position = "at"
+payload = '''
+local skipped, skip_to = G.GAME.blind_on_deck or 'Small', 
+	G.GAME.blind_on_deck == 'Small' and 'Big' or G.GAME.blind_on_deck == 'Big' and 'Boss' or G.GAME.blind_on_deck == 'Boss' and 'Small' --modify this line to account for boss-small, and if its boss blind then reroll_blinds()
+	G.GAME.round_resets.blind_states[skipped] = 'Skipped'
+	G.GAME.round_resets.blind_states[skip_to] = 'Select'
+	if G.GAME.blind_on_deck == 'Boss' then
+		G.E_MANAGER:add_event(Event({
+			func = function()
+				if G.blind_select then G.blind_select.alignment.offset.y = 40 end
+				return true
+			end
+		}))
+		G.E_MANAGER:add_event(Event({
+			trigger = 'after',
+			delay = 0.2,
+			func = function()
+				if G.shop then return false end --have and eat compat
+				for k, v in pairs(G.GAME.tags) do 
+					if (v.name == "Meteor Tag" or v.name == "Ethereal Tag" or v.name == "Standard Tag" or v.name == "Buffoon Tag") and G.GAME.round_resets.ante == 1 then return false end
+				end
+				if G.booster_pack then return false end --booster pack compat
+				if G.blind_select then G.blind_select:remove()
+				G.blind_select = nil end
+				if G.blind_prompt_box then G.blind_prompt_box:remove() end
+				G:update(G.real_dt) --fix ts in case of booster
+				G.RESET_BLIND_STATES = true
+				reset_blinds()
+				G.GAME.round_resets.blind_tags.Small = get_next_tag_key()
+				G.GAME.round_resets.blind_tags.Big = get_next_tag_key()
+				G.STATE_COMPLETE = false
+				return true
+			end,
+			blockable = true
+		}))
+	end
+	G.GAME.blind_on_deck = skip_to
+'''
+match_indent = true
+
+#Remove original functionality of Chicot so hes not too broken
+[[patches]]
+[patches.pattern]
+target = "card.lua"
+pattern = '''
+if self.ability.name == 'Chicot' and G.GAME.blind and G.GAME.blind.boss and not G.GAME.blind.disabled then
+	G.GAME.blind:disable()
+	play_sound('timpani')
+	card_eval_status_text(self, 'extra', nil, nil, nil, {message = localize('ph_boss_disabled')})
+end
+'''
+position = "at"
+payload = ''' '''
+match_indent = true
+
+#Varaibles required for charring cards and to be modifiable by vouchers (Normal/CharredChance)
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = '''
+planet_rate = 4, 
+spectral_rate = 0,
+playing_card_rate = 0,
+consumeable_buffer = 0,
+joker_buffer = 0,
+'''
+position = "after"
+payload = '''
+char_chance = 20,
+'''
+match_indent = true
+
+#Cards becoming charred
+#local card = copy_card(self, nil, nil, nil, nil)
+#card:set_edition(quantum, true, true)
+#self.area:emplace(card)
+
+#make individual checks for each card area (jokers, hands, consumables)
+[[patches]]
+[patches.pattern]
+target = "card.lua"
+pattern = '''
+if self.area then self.area:remove_card(self) end
+'''
+position = "before"
+payload = '''
+if self.area and (self.area == G.jokers or self.area == G.hand or self.area == G.play or self.area == G.deck) and pseudorandom(pseudoseed('charred')) < (G.GAME.probabilities.normal or 1) / (G.GAME.char_chance or 1) and ((self.edition and not (self.edition.ep1n_charred or self.edition.ep1n_superpos)) or (not self.edition)) and self.ability.set ~= "Voucher" and self.ability.set ~= "Booster" then
+	local card = copy_card(self, nil, nil, nil, nil)
+	card:set_edition({ep1n_charred = true}, true)
+	card:add_to_deck()
+	table.insert(G.playing_cards, card)
+	self.area:emplace(card)
+	card:start_materialize({G.C.WHITE, G.C.WHITE}, false, 0.5)
+	card_eval_status_text(card, "extra", nil, nil, nil, {message = "Charred!", colour = G.C.WHITE})
+end
+'''
+match_indent = true
+
+#gets current joker config and compares it to previous. then checks if any quantum cards need to be procced and make the old config the new config
+[[patches]]
+[patches.pattern]
+target = "engine/node.lua"
+pattern = "if self.children.d_popup then"
+position = "before"
+payload = '''
+if self.area and self.area == G.jokers then 
+	local freshSetup = {}
+	for k, v in ipairs(G.jokers.cards) do
+		table.insert(freshSetup, v)
+	end
+	freshSetup = ep1n_check_quantum(self, freshSetup)
+	G.GAME.lastSetup = freshSetup
+end
+'''
+match_indent = true
+
+#uses stopHover to ensure that jokers will always be in the correct order when doing quantum checks
+[[patches]]
+[patches.pattern]
+target = "engine/node.lua"
+pattern = "if self.children.h_popup then"
+position = "before"
+payload = '''
+if self.area and self.area == G.jokers then 
+	local freshSetup = {}
+	for k, v in ipairs(G.jokers.cards) do
+		table.insert(freshSetup, v)
+	end
+	G.GAME.lastSetup = freshSetup
+end
+if self.edition and self.edition.ep1n_superpos then self:start_dissolve({G.C.PURPLE}) end
+'''
+match_indent = true
+#literally EXACTLY what we're going for here this is going amazing
+
+#uses hover to just delete the superpos cards before you can click them
+[[patches]]
+[patches.pattern]
+target = "engine/node.lua"
+pattern = "self.children.h_popup.states.drag.can = true"
+position = "after"
+payload = '''
+if self and self.edition and self.edition.ep1n_superpos then ep1n_void_superpos(self) end
+'''
+match_indent = true
+
+#bug fixing, make it so you can't touch the card at all
+[[patches]]
+[patches.pattern]
+target = "card.lua"
+pattern = "if self.area and self.area:can_highlight(self) then"
+position = "at"
+payload = '''
+if not (self.edition and self.edition.ep1n_superpos) and self.area and self.area:can_highlight(self) then
+'''
+match_indent = true
+
+#stores last hand setup
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = '''
+planet_rate = 4, 
+spectral_rate = 0,
+playing_card_rate = 0,
+consumeable_buffer = 0,
+joker_buffer = 0,
+'''
+position = "before"
+payload = '''
+lastSetup = {},
+'''
+match_indent = true
+
+#add quantum cards to both scoring_hand and full_hand
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = "check_for_unlock({type = 'hand', handname = text, disp_text = non_loc_disp_text, scoring_hand = scoring_hand, full_hand = G.play.cards})"
+position = "after"
+payload = '''
+for i = 1, #G.hand.cards do
+	if G.hand.cards[i].edition and G.hand.cards[i].edition.ep1n_quantum and not G.hand.cards[i].edition.ep1n_superpos then
+		local clone = copy_card(G.hand.cards[i], nil, nil, nil, nil)
+		clone:set_edition({ep1n_superpos = true}, true)
+		clone:set_card_area(scoring_hand)
+		G.play:emplace(clone)
+		table.insert(scoring_hand, clone)
+		G.play:align_cards()
+		table.insert(G.playing_cards, clone)
+		highlight_card(clone,(i-0.999)/5,'up')
+	end
+end
+for i = 1, #scoring_hand do
+	if scoring_hand[i].edition and scoring_hand[i].edition.ep1n_quantum and not scoring_hand[i].edition.ep1n_superpos then
+		local clone = copy_card(scoring_hand[i], nil, nil, nil, nil)
+		clone:set_edition({ep1n_superpos = true}, true)
+		clone:set_card_area(G.hand)
+		G.hand:emplace(clone)
+		G.hand:align_cards()
+		table.insert(G.playing_cards, clone)
+	end
+end
+'''
+match_indent = true
+
+#when you fully open the deck, delete all superpos cards
+[[patches]]
+[patches.pattern]
+target = "functions/button_callbacks.lua"
+pattern = '''
+G.SETTINGS.paused = true
+  if G.deck_preview then 
+    G.deck_preview:remove()
+    G.deck_preview = nil
+  end
+'''
+position = "after"
+payload = '''
+for _, c in pairs(G.deck.cards) do
+	if c.edition and c.edition.ep1n_superpos then c:start_dissolve({G.C.PURPLE}) end
+end
+for _, c in pairs(G.play.cards) do
+	if c.edition and c.edition.ep1n_superpos then c:start_dissolve({G.C.PURPLE}) end
+end
+for _, c in pairs(G.discard.cards) do
+	if c.edition and c.edition.ep1n_superpos then c:start_dissolve({G.C.PURPLE}) end
+end
+for _, c in pairs(G.hand.cards) do
+	if c.edition and c.edition.ep1n_superpos then c:start_dissolve({G.C.PURPLE}) end
+end
+'''
+match_indent = true
+
+#when you peek the deck, delete all superpos cards
+[[patches]]
+[patches.pattern]
+target = "cardarea.lua"
+pattern = '''
+if self.children.peek_deck then self.children.peek_deck:draw() end
+'''
+position = "before"
+payload = '''
+if G.deck_preview then
+	for _, c in pairs(G.deck.cards) do
+		if c.edition and c.edition.ep1n_superpos then c:start_dissolve({G.C.PURPLE}) end
+	end
+	for _, c in pairs(G.play.cards) do
+		if c.edition and c.edition.ep1n_superpos then c:start_dissolve({G.C.PURPLE}) end
+	end
+	for _, c in pairs(G.discard.cards) do
+		if c.edition and c.edition.ep1n_superpos then c:start_dissolve({G.C.PURPLE}) end
+	end
+	for _, c in pairs(G.hand.cards) do
+		if c.edition and c.edition.ep1n_superpos then c:start_dissolve({G.C.PURPLE}) end
+	end
+end
+'''
+match_indent = true
